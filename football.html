@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Football Game</title>
+    <style>
+        /* Previous styles remain the same */
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: #1a1a1a;
+            margin: 0;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+        }
+
+        #gameContainer {
+            width: 800px;
+            height: 600px;
+            background: linear-gradient(to bottom, #4CAF50, #45a049);
+            position: relative;
+            border: 5px solid white;
+            overflow: hidden;
+            box-shadow: 0 0 20px rgba(0,0,0,0.3);
+            cursor: default;
+        }
+
+        /* Field markings remain the same */
+        #gameContainer::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: rgba(255,255,255,0.5);
+        }
+
+        #gameContainer::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 150px;
+            height: 150px;
+            border: 2px solid rgba(255,255,255,0.5);
+            border-radius: 50%;
+        }
+
+        #ball {
+            width: 20px;
+            height: 20px;
+            background: white;
+            border-radius: 50%;
+            position: absolute;
+            transform: translate(-50%, -50%);
+            box-shadow: 0 0 10px rgba(0,0,0,0.3);
+        }
+
+        .goal {
+            width: 20px;
+            height: 120px;
+            background: white;
+            position: absolute;
+            top: 240px;
+        }
+
+        #leftGoal { left: 0; }
+        #rightGoal { right: 0; }
+
+        #scoreBoard {
+            text-align: center;
+            font-size: 24px;
+            margin-bottom: 20px;
+            padding: 15px 30px;
+            background: #333;
+            color: white;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.2);
+        }
+
+        .player {
+            width: 40px;
+            height: 40px;
+            position: absolute;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            transition: transform 0.1s;
+        }
+
+        #player1 {
+            background: radial-gradient(circle at 30% 30%, #4169E1, #1e3c8c);
+            border: 2px solid #1e3c8c;
+        }
+
+        #player2 {
+            background: radial-gradient(circle at 30% 30%, #FF4136, #cc0000);
+            border: 2px solid #cc0000;
+        }
+
+        #instructions {
+            color: white;
+            margin-top: 20px;
+            padding: 15px;
+            background: #333;
+            border-radius: 10px;
+            max-width: 800px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div id="scoreBoard">
+        AI (Blue): <span id="leftScore">0</span> - <span id="rightScore">0</span> :Player (Red)
+    </div>
+    <div id="gameContainer">
+        <div id="ball"></div>
+        <div id="leftGoal" class="goal"></div>
+        <div id="rightGoal" class="goal"></div>
+        <div id="player1" class="player"></div>
+        <div id="player2" class="player"></div>
+    </div>
+    <div id="instructions">
+        Use Arrow Keys or Click & Hold mouse to move Red Player | Play against AI Blue Player | First to 5 goals wins!
+    </div>
+
+    <script>
+        const ball = document.getElementById('ball');
+        const player1 = document.getElementById('player1');
+        const player2 = document.getElementById('player2');
+        const leftScore = document.getElementById('leftScore');
+        const rightScore = document.getElementById('rightScore');
+        const gameContainer = document.getElementById('gameContainer');
+
+        // Game state
+        const gameState = {
+            ball: { x: 400, y: 300, speedX: 0, speedY: 0 },
+            player1: { x: 200, y: 300, speed: 5 },
+            player2: { x: 600, y: 300, speed: 5 },
+            friction: 0.98,
+            maxBallSpeed: 15,
+            playerRadius: 20,
+            ballRadius: 10,
+            gameActive: true,
+            mouseControl: {
+                active: false,
+                targetX: 600,
+                targetY: 300
+            }
+        };
+
+        const keys = new Set();
+
+        // Input handling
+        document.addEventListener('keydown', (e) => {
+            keys.add(e.key.toLowerCase());
+            e.preventDefault();
+        });
+
+        document.addEventListener('keyup', (e) => {
+            keys.delete(e.key.toLowerCase());
+        });
+
+        // Mouse control
+        gameContainer.addEventListener('mousedown', (e) => {
+            gameState.mouseControl.active = true;
+            const rect = gameContainer.getBoundingClientRect();
+            gameState.mouseControl.targetX = e.clientX - rect.left;
+            gameState.mouseControl.targetY = e.clientY - rect.top;
+        });
+
+        gameContainer.addEventListener('mousemove', (e) => {
+            if (gameState.mouseControl.active) {
+                const rect = gameContainer.getBoundingClientRect();
+                gameState.mouseControl.targetX = e.clientX - rect.left;
+                gameState.mouseControl.targetY = e.clientY - rect.top;
+            }
+        });
+
+        document.addEventListener('mouseup', () => {
+            gameState.mouseControl.active = false;
+        });
+
+        function movePlayer2() {
+            let dx = 0;
+            let dy = 0;
+
+            if (gameState.mouseControl.active) {
+                // Mouse control
+                const targetX = gameState.mouseControl.targetX;
+                const targetY = gameState.mouseControl.targetY;
+                const dx = targetX - gameState.player2.x;
+                const dy = targetY - gameState.player2.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                if (distance > 5) {
+                    return {
+                        dx: (dx / distance) * gameState.player2.speed,
+                        dy: (dy / distance) * gameState.player2.speed
+                    };
+                }
+                return { dx: 0, dy: 0 };
+            } else {
+                // Keyboard control
+                if (keys.has('arrowup')) dy -= gameState.player2.speed;
+                if (keys.has('arrowdown')) dy += gameState.player2.speed;
+                if (keys.has('arrowleft')) dx -= gameState.player2.speed;
+                if (keys.has('arrowright')) dx += gameState.player2.speed;
+
+                // Normalize diagonal movement
+                if (dx !== 0 && dy !== 0) {
+                    dx *= 0.707;
+                    dy *= 0.707;
+                }
+            }
+
+            return { dx, dy };
+        }
+
+        // The rest of the code remains the same...
+        function moveAI() {
+            const p1 = gameState.player1;
+            const ball = gameState.ball;
+            
+            let targetX = ball.x;
+            let targetY = ball.y;
+            
+            if (ball.x < 400) {
+                targetX = ball.x;
+                targetY = ball.y;
+            } else {
+                targetX = 200;
+                targetY = ball.y;
+            }
+
+            const dx = targetX - p1.x;
+            const dy = targetY - p1.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            let moveX = 0;
+            let moveY = 0;
+            
+            if (distance > 5) {
+                moveX = (dx / distance) * p1.speed;
+                moveY = (dy / distance) * p1.speed;
+            }
+
+            return { dx: moveX, dy: moveY };
+        }
+
+        function checkCollision(circle1, circle2, r1, r2) {
+            const dx = circle1.x - circle2.x;
+            const dy = circle1.y - circle2.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            return distance < (r1 + r2);
+        }
+
+        function handleBallCollision(ballPos, playerPos) {
+            const dx = ballPos.x - playerPos.x;
+            const dy = ballPos.y - playerPos.y;
+            const angle = Math.atan2(dy, dx);
+            const speed = Math.sqrt(gameState.ball.speedX ** 2 + gameState.ball.speedY ** 2);
+            const newSpeed = Math.min(speed + 5, gameState.maxBallSpeed);
+            
+            gameState.ball.speedX = Math.cos(angle) * newSpeed;
+            gameState.ball.speedY = Math.sin(angle) * newSpeed;
+        }
+
+        function constrainToField(pos, radius) {
+            return {
+                x: Math.max(radius, Math.min(800 - radius, pos.x)),
+                y: Math.max(radius, Math.min(600 - radius, pos.y))
+            };
+        }
+
+        function resetBall() {
+            gameState.ball.x = 400;
+            gameState.ball.y = 300;
+            gameState.ball.speedX = 0;
+            gameState.ball.speedY = 0;
+        }
+
+        function checkGoal() {
+            if (gameState.ball.x < 20 && gameState.ball.y > 240 && gameState.ball.y < 360) {
+                rightScore.textContent = parseInt(rightScore.textContent) + 1;
+                if (parseInt(rightScore.textContent) >= 5) endGame("Player (Red)");
+                return true;
+            }
+            if (gameState.ball.x > 780 && gameState.ball.y > 240 && gameState.ball.y < 360) {
+                leftScore.textContent = parseInt(leftScore.textContent) + 1;
+                if (parseInt(leftScore.textContent) >= 5) endGame("AI (Blue)");
+                return true;
+            }
+            return false;
+        }
+
+        function endGame(winner) {
+            gameState.gameActive = false;
+            alert(`${winner} wins! Refresh to play again.`);
+        }
+
+        function updateGame() {
+            if (!gameState.gameActive) return;
+
+            // Update AI player position
+            const aiMovement = moveAI();
+            gameState.player1.x += aiMovement.dx;
+            gameState.player1.y += aiMovement.dy;
+
+            // Update human player position
+            const player2Movement = movePlayer2();
+            gameState.player2.x += player2Movement.dx;
+            gameState.player2.y += player2Movement.dy;
+
+            // Constrain players to field
+            const player1Pos = constrainToField(gameState.player1, gameState.playerRadius);
+            const player2Pos = constrainToField(gameState.player2, gameState.playerRadius);
+            gameState.player1.x = player1Pos.x;
+            gameState.player1.y = player1Pos.y;
+            gameState.player2.x = player2Pos.x;
+            gameState.player2.y = player2Pos.y;
+
+            // Update ball position
+            gameState.ball.x += gameState.ball.speedX;
+            gameState.ball.y += gameState.ball.speedY;
+
+            // Apply friction to ball
+            gameState.ball.speedX *= gameState.friction;
+            gameState.ball.speedY *= gameState.friction;
+
+            // Check collisions
+            if (checkCollision(gameState.ball, gameState.player1, gameState.ballRadius, gameState.playerRadius)) {
+                handleBallCollision(gameState.ball, gameState.player1);
+            }
+            if (checkCollision(gameState.ball, gameState.player2, gameState.ballRadius, gameState.playerRadius)) {
+                handleBallCollision(gameState.ball, gameState.player2);
+            }
+
+            // Ball boundary collision
+            const ballPos = constrainToField(gameState.ball, gameState.ballRadius);
+            if (ballPos.x !== gameState.ball.x) gameState.ball.speedX *= -0.8;
+            if (ballPos.y !== gameState.ball.y) gameState.ball.speedY *= -0.8;
+            gameState.ball.x = ballPos.x;
+            gameState.ball.y = ballPos.y;
+
+            // Check for goals
+            if (checkGoal()) {
+                resetBall();
+            }
+
+            // Update visual positions
+            ball.style.left = `${gameState.ball.x}px`;
+            ball.style.top = `${gameState.ball.y}px`;
+            player1.style.left = `${gameState.player1.x}px`;
+            player1.style.top = `${gameState.player1.y}px`;
+            player2.style.left = `${gameState.player2.x}px`;
+            player2.style.top = `${gameState.player2.y}px`;
+
+            requestAnimationFrame(updateGame);
+        }
+
+        // Start the game
+        resetBall();
+        updateGame();
+    </script>
+</body>
+</html>
